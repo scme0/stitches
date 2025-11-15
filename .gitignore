@@ -209,3 +209,5 @@ __marimo__/
 media/
 
 .vscode/
+
+.DS_Store
