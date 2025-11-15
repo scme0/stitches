@@ -1,0 +1,10 @@
+videos/JumpBelow.mp4 filter=lfs diff=lfs merge=lfs -text
+videos/VerticalStitches.mp4 filter=lfs diff=lfs merge=lfs -text
+videos/HorizontalExpandingDown.mp4 filter=lfs diff=lfs merge=lfs -text
+videos/HorizontalGoingAbove.mp4 filter=lfs diff=lfs merge=lfs -text
+videos/HorizontalGoingBelow.mp4 filter=lfs diff=lfs merge=lfs -text
+videos/HorizontalJump.mp4 filter=lfs diff=lfs merge=lfs -text
+videos/HorizontalStackedLayers.mp4 filter=lfs diff=lfs merge=lfs -text
+videos/HorizontalStiches.mp4 filter=lfs diff=lfs merge=lfs -text
+videos/SingleStitch.mp4 filter=lfs diff=lfs merge=lfs -text
+videos/JumpAbove.mp4 filter=lfs diff=lfs merge=lfs -text
