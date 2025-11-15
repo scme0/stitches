@@ -3,4 +3,4 @@ A collection of animations using manim which show the patterns I follow when doi
 
 video tag:
 
-<video src="https://github.com/scme0/stitches/raw/refs/heads/main/videos/HorizontalExpandingDown.mp4" controls width=180></video>
+<video src="videos/HorizontalExpandingDown.mp4" controls width=180></video>
