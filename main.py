@@ -4,25 +4,25 @@ from grid import *
 class SingleStitch(MovingCameraScene):
     def construct(self):
         g = Grid("Single Stitch", 1, 1)
-        g.addStitch(Stitch(Point((0,0),Corner.TopLeft), Point((0,0), Corner.BottomRight), StitchType.FrontOne))
-        g.addStitch(Stitch(Point((0,0),Corner.BottomRight), Point((0,0), Corner.TopRight), StitchType.BackOne))
-        g.addStitch(Stitch(Point((0,0),Corner.TopRight), Point((0,0), Corner.BottomLeft), StitchType.FrontTwo))
+        g.addStitch(SimpleStitch(0, Corner.TopLeft, Corner.BottomRight))
+        g.addStitch(SimpleStitch(0, Corner.BottomRight, Corner.TopRight))
+        g.addStitch(SimpleStitch(0, Corner.TopRight, Corner.BottomLeft))
         g.draw(self)
 
 class HorizontalStiches(MovingCameraScene):
     def construct(self):
         g = Grid("Horizontal Stitches", 3, 1)
-        g.addStitch(Stitch(Point((0,0),Corner.TopLeft), Point((0,0), Corner.BottomRight), StitchType.FrontOne))
-        g.addStitch(Stitch(Point((0,0),Corner.BottomRight), Point((0,0), Corner.TopRight), StitchType.BackOne))
-        g.addStitch(Stitch(Point((1,0),Corner.TopLeft), Point((1,0), Corner.BottomRight), StitchType.FrontOne))
-        g.addStitch(Stitch(Point((1,0),Corner.BottomRight), Point((1,0), Corner.TopRight), StitchType.BackOne))
-        g.addStitch(Stitch(Point((2,0),Corner.TopLeft), Point((2,0), Corner.BottomRight), StitchType.FrontOne))
-        g.addStitch(Stitch(Point((2,0),Corner.BottomRight), Point((2,0), Corner.TopRight), StitchType.BackOne))
-        g.addStitch(Stitch(Point((2,0),Corner.TopRight), Point((2,0), Corner.BottomLeft), StitchType.FrontTwo))
-        g.addStitch(Stitch(Point((2,0),Corner.BottomLeft), Point((2,0), Corner.TopLeft), StitchType.BackTwo))
-        g.addStitch(Stitch(Point((1,0),Corner.TopRight), Point((1,0), Corner.BottomLeft), StitchType.FrontTwo))
-        g.addStitch(Stitch(Point((1,0),Corner.BottomLeft), Point((1,0), Corner.TopLeft), StitchType.BackTwo))
-        g.addStitch(Stitch(Point((0,0),Corner.TopRight), Point((0,0), Corner.BottomLeft), StitchType.FrontTwo))
+        g.addStitch(SimpleStitch(0, Corner.TopLeft, Corner.BottomRight))
+        g.addStitch(SimpleStitch(0, Corner.BottomRight, Corner.TopRight))
+        g.addStitch(SimpleStitch(1, Corner.TopLeft, Corner.BottomRight))
+        g.addStitch(SimpleStitch(1, Corner.BottomRight, Corner.TopRight))
+        g.addStitch(SimpleStitch(2, Corner.TopLeft, Corner.BottomRight))
+        g.addStitch(SimpleStitch(2, Corner.BottomRight, Corner.TopRight))
+        g.addStitch(SimpleStitch(2, Corner.TopRight, Corner.BottomLeft))
+        g.addStitch(SimpleStitch(2, Corner.BottomLeft, Corner.TopLeft))
+        g.addStitch(SimpleStitch(1, Corner.TopRight, Corner.BottomLeft))
+        g.addStitch(SimpleStitch(1, Corner.BottomLeft, Corner.TopLeft))
+        g.addStitch(SimpleStitch(0, Corner.TopRight, Corner.BottomLeft))
         g.draw(self)
 
 class VerticalStitches(MovingCameraScene):
