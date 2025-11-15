@@ -3,7 +3,7 @@ A collection of animations using manim which show the patterns I follow when doi
 
 Solid lines are stitches visible on the front. Purple (between top left and bottom right) always goes first, and green (between top right and bottom left) always goes second.
 
-Dashed lines are stitches on the back. I aim to always keep these stitches either horizontal or vertical (not diagnonal).
+Dashed lines are stitches behind. Yellow is the default colour, red is used so it's visible when they overlap. I aim to never make diagnonal behind stitches, but that's just me! :slightly_smiling_face:
 
 ## Standard Stitch
 
@@ -25,7 +25,7 @@ I default to horizontal stitches, only using vertical stitches when the pattern 
 
 ## Horizontal Stacked Layers
 
-Basic rows of stitches are pretty easy, but the start/end point can be tricky. Here's my technique which maintains horizontal and vertical back stitches.
+Basic rows of stitches are pretty easy, but the start/end point can be tricky. Here's my technique with making diagonal behind stitches.
 
 ![HorizontalStackedLayers](animations/HorizontalStackedLayers.gif)
 
@@ -44,7 +44,7 @@ If you have several full rows of stitches but a few extra ones on top half way d
 xxxxxxxxxx
 xxxxxxxxxx
 ```
-It's better to start on the very left with the top of the two full rows, rather than with the bit on the top due to the long back stitch required if you used the Horizontal Expanding Down technique.
+It's better to start on the very left with the top of the two full rows, rather than with the bit on the top due to the long behind stitch required if you used the Horizontal Expanding Down technique.
 
 ![HorizontalGoingAbove](animations/HorizontalGoingAbove.gif)
 
@@ -62,7 +62,7 @@ xxxxxxxxxx
 
 ## Horizontal Jump
 
-Sometimes there are gaps between stitches in a row, this is how I handle them.
+Sometimes there are gaps between stitches in a row, this is how I handle them without making diagonal behind stitches
 
 ![HorizontalJump](animations/HorizontalJump.gif)
 
