@@ -1,4 +1,4 @@
-from manim import *
+from manim import MovingCameraScene
 from grid import *
 
 class SingleStitch(MovingCameraScene):
@@ -113,8 +113,8 @@ class HorizontalGoingBelow(MovingCameraScene):
         g.addStitch(Stitch(Point((0,1), Corner.TopRight), Point((0,1), Corner.BottomLeft), StitchType.FrontTwo))
         g.draw(self)
 
-class HorizontalStackedLayers(MovingCameraScene):
-    def construct(self):
-        g = Grid("Horizontal Stacked Layers", 3, 2)
-        g.addStitch(Stitch(Point))
+# class HorizontalStackedLayers(MovingCameraScene):
+#     def construct(self):
+#         g = Grid("Horizontal Stacked Layers", 3, 2)
+#         g.addStitch(Stitch(Point))
 

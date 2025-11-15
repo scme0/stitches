@@ -1,7 +1,7 @@
 [project]
-name = "cross-stich"
+name = "stitches"
 version = "0.1.0"
-description = "Add your description here"
+description = "A collection of animations using manim which show the patterns I follow when doing cross stitch"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

@@ -1,5 +1,6 @@
 from enum import Enum
-from manim import *
+from manim import MovingCameraScene, Graph, Text, MovingCamera, Line, DashedLine, Create
+from manim import UP, WHITE, PURPLE, GREEN, YELLOW, RED
 
 class StitchType(Enum):
     FrontOne = 0
@@ -68,7 +69,7 @@ class Grid:
     def addStitch(self, stitch: Stitch):
         self.stiches.append(stitch)
     
-    def draw(self, scene: Scene):
+    def draw(self, scene: MovingCameraScene):
         verticies = []
         lt = {}
         for square in self.squares.values():
@@ -82,7 +83,8 @@ class Grid:
         scene.add(g)
         t = Text(self.title, font="Arial", color=WHITE, font_size=24).next_to(g, UP)
         scene.add(t)
-        scene.camera.auto_zoom([g, t], margin=2.0, animate= False)
+        if isinstance(scene.camera, MovingCamera):
+            scene.camera.auto_zoom([g,t], margin=2.0, animate=False)
 
         for stitch in self.stiches:
             fromSquare = self.squares[stitch.fro.square]
