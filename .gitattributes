@@ -1,0 +1,10 @@
+animations/HorizontalExpandingDown.gif filter=lfs diff=lfs merge=lfs -text
+animations/HorizontalGoingAbove.gif filter=lfs diff=lfs merge=lfs -text
+animations/HorizontalStackedLayers.gif filter=lfs diff=lfs merge=lfs -text
+animations/JumpAbove.gif filter=lfs diff=lfs merge=lfs -text
+animations/VerticalStitches.gif filter=lfs diff=lfs merge=lfs -text
+animations/HorizontalGoingBelow.gif filter=lfs diff=lfs merge=lfs -text
+animations/HorizontalJump.gif filter=lfs diff=lfs merge=lfs -text
+animations/HorizontalStiches.gif filter=lfs diff=lfs merge=lfs -text
+animations/JumpBelow.gif filter=lfs diff=lfs merge=lfs -text
+animations/SingleStitch.gif filter=lfs diff=lfs merge=lfs -text
