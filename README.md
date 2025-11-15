@@ -44,7 +44,7 @@ If you have several full rows of stitches but a few extra ones on top half way d
 xxxxxxxxxx
 xxxxxxxxxx
 ```
-It's better to start on the top of the two full rows, than with the bit on the top due to the long back stitch required if you used the Horizontal Expanding Down technique.
+It's better to start on the very left with the top of the two full rows, rather than with the bit on the top due to the long back stitch required if you used the Horizontal Expanding Down technique.
 
 ![HorizontalGoingAbove](animations/HorizontalGoingAbove.gif)
 
