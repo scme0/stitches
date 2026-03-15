@@ -1,5 +1,5 @@
 from manim import MovingCameraScene
-from grid import SimpleStitch, Aida, StitchType, Stitch
+from grid import SimpleStitch, Aida, StitchType, Stitch, plan_stitching
 from grid import Corner as C
 
 class SingleStitch(MovingCameraScene):
@@ -194,3 +194,58 @@ class JumpBelow(MovingCameraScene):
         g.addStitch(SimpleStitch(0, C.TopRight, C.BottomLeft))
         g.draw(self)
 
+
+# ---------------------------------------------------------------------------
+# Scenes using the auto-planner
+# ---------------------------------------------------------------------------
+
+class PlannedHorizontal(MovingCameraScene):
+    """Auto-planned equivalent of HorizontalStiches (3×1 row)."""
+    def construct(self):
+        cells = [(x, 0) for x in range(3)]
+        g = plan_stitching("Planned: Horizontal", 3, 1, cells)
+        g.draw(self)
+
+
+class PlannedVertical(MovingCameraScene):
+    """Auto-planned equivalent of VerticalStitches (1×3 column)."""
+    def construct(self):
+        cells = [(0, y) for y in range(3)]
+        g = plan_stitching("Planned: Vertical", 1, 3, cells)
+        g.draw(self)
+
+
+class PlannedRectangle(MovingCameraScene):
+    """Auto-planned 4×3 solid block — shows zero-waste row chaining."""
+    def construct(self):
+        cells = [(x, y) for x in range(4) for y in range(3)]
+        g = plan_stitching("Planned: 4x3 Block", 4, 3, cells)
+        g.draw(self)
+
+
+class PlannedLShape(MovingCameraScene):
+    """Auto-planned L-shaped layout — two rows of different widths."""
+    def construct(self):
+        cells = [(x, 1) for x in range(4)] + [(0, 0), (1, 0)]
+        g = plan_stitching("Planned: L-Shape", 4, 2, cells)
+        g.draw(self)
+
+
+class PlannedGappedRow(MovingCameraScene):
+    """Auto-planned row with a gap — tests the same-row segment connector."""
+    def construct(self):
+        cells = [(0, 0), (1, 0), (3, 0), (4, 0)]   # gap at x=2
+        g = plan_stitching("Planned: Gapped Row", 5, 1, cells)
+        g.draw(self)
+
+
+class PlannedStaircase(MovingCameraScene):
+    """Auto-planned staircase — rows stagger right; tests cross-row connectors."""
+    def construct(self):
+        cells = (
+            [(x, 2) for x in range(3)] +
+            [(x, 1) for x in range(1, 4)] +
+            [(x, 0) for x in range(2, 5)]
+        )
+        g = plan_stitching("Planned: Staircase", 5, 3, cells)
+        g.draw(self)
