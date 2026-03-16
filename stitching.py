@@ -151,7 +151,30 @@ def plan_stitching(
     if not valid:
         return grid
 
-    active_sq_ids = sorted(cell_to_id[c] for c in valid)
+    active_sq_ids     = sorted(cell_to_id[c] for c in valid)
+    active_sq_ids_set = set(active_sq_ids)
+
+    # ------------------------------------------------------------------ #
+    # Connected components (H/V adjacency among active cells)              #
+    # ------------------------------------------------------------------ #
+    cell_region: dict[int, int] = {}
+    region_id = 0
+    for sq_id in active_sq_ids:
+        if sq_id in cell_region:
+            continue
+        queue = [sq_id]
+        while queue:
+            cid = queue.pop()
+            if cid in cell_region:
+                continue
+            cell_region[cid] = region_id
+            sq = grid.squares[cid]
+            for nx, ny in ((sq.x+1, sq.y), (sq.x-1, sq.y),
+                           (sq.x, sq.y+1), (sq.x, sq.y-1)):
+                nbr = cell_to_id.get((nx, ny))
+                if nbr is not None and nbr in active_sq_ids_set:
+                    queue.append(nbr)
+        region_id += 1
 
     # ------------------------------------------------------------------ #
     # Node canonicalisation                                                #
@@ -202,11 +225,13 @@ def plan_stitching(
             and (t.kind == 'front1' or t.cell_id in front1_done)
         ]
 
-    def best_candidate(current: int, avail: list, current_y: int) -> tuple:
+    def best_candidate(current: int, avail: list, current_y: int,
+                       current_cell_id: int) -> tuple:
         best_score = None
         best_task  = None
         best_dir   = None
-        cx, cy = node_coords[current]
+        cx, cy       = node_coords[current]
+        cur_region   = cell_region[current_cell_id]
         # End cells are deferred until no non-end tasks remain.
         has_non_end = any(t.cell_id not in end_sq_ids for t in avail)
         for task in avail:
@@ -227,8 +252,14 @@ def plan_stitching(
                 kind_pref    = 0 if task.kind == 'front1' else 1
                 is_jump      = 1 if d > 1.0 + 1e-9 else 0
                 not_same_row = 0 if task_y == current_y else 1
-                score = (is_diagonal, kind_pref, is_jump, d, not_same_row,
-                         end_pos)
+                # Penalise jumps only when target cell is in the same
+                # connected region — cross-region jumps are unavoidable
+                # and should be attempted eagerly (like gapped rows).
+                same_region    = cell_region[task.cell_id] == cur_region
+                penalized_jump = 1 if is_jump and same_region else 0
+                row_dist       = abs(task_y - current_y)
+                score = (is_diagonal, not_same_row, penalized_jump, kind_pref,
+                         is_jump, d, row_dist, end_pos)
                 if best_score is None or score < best_score:
                     best_score = score
                     best_task  = task
@@ -362,12 +393,14 @@ def plan_stitching(
     # Reserve the last 3 cells of the run so the sequence finishes with a
     # clean sequential traversal — the stitcher can tuck the finishing thread
     # under those consecutive back stitches.  Only applied when the run is
-    # long enough (≥ 4 cells) to leave at least one non-reserved cell before
-    # the end section; shorter runs fall naturally into run order already.
-    end_count     = min(3, len(longest_run) - 1) if len(longest_run) >= 4 else 0
+    # long enough (≥ 4 cells) AND the shape is purely linear (all active
+    # cells lie on the start run).  For multi-row/column shapes the
+    # reservation forces a long return jump after the off-run cells are done.
+    all_on_run    = (valid == set(tuple(c) for c in longest_run))
+    end_count     = min(3, len(longest_run) - 1) if all_on_run and len(longest_run) >= 4 else 0
     end_run       = longest_run[-end_count:] if end_count else []
     end_sq_ids    = {cell_to_id[c] for c in end_run}
-    end_order_map = {cell_to_id[c]: i for i, c in enumerate(end_run)}
+    end_order_map = {cell_to_id[c]: i for i, c in enumerate(reversed(end_run))}
 
     # ------------------------------------------------------------------ #
     # Main traversal loop                                                  #
@@ -382,21 +415,24 @@ def plan_stitching(
     front1_done: set = set()
 
     emit_front(start_task, 'fwd')
-    current   = end_node(start_task, 'fwd')
-    current_y = grid.squares[start_task.cell_id].y
+    current         = end_node(start_task, 'fwd')
+    current_y       = grid.squares[start_task.cell_id].y
+    current_cell_id = start_task.cell_id
     done.add(start_task)
     front1_done.add(start_task.cell_id)
 
     while len(done) < len(all_tasks):
         avail = available_tasks(done, front1_done)
-        best_task, best_dir = best_candidate(current, avail, current_y)
+        best_task, best_dir = best_candidate(current, avail, current_y,
+                                             current_cell_id)
         if best_task is None:
             break
 
         emit_back(current, start_node(best_task, best_dir))
         emit_front(best_task, best_dir)
-        current   = end_node(best_task, best_dir)
-        current_y = grid.squares[best_task.cell_id].y
+        current         = end_node(best_task, best_dir)
+        current_y       = grid.squares[best_task.cell_id].y
+        current_cell_id = best_task.cell_id
         done.add(best_task)
         if best_task.kind == 'front1':
             front1_done.add(best_task.cell_id)
