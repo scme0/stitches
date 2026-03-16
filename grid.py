@@ -267,7 +267,7 @@ def plan_stitching(
                 not_same_row = 0 if task_y == current_y else 1
                 is_jump      = 1 if d > 1.0 + 1e-9 else 0
                 kind_pref    = 0 if task.kind == 'front1' else 1
-                score = (is_diagonal, not_same_row, kind_pref, is_jump, d)
+                score = (is_diagonal, kind_pref, is_jump, d, not_same_row)
                 if best_score is None or score < best_score:
                     best_score = score
                     best_task = task
