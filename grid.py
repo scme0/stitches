@@ -1,4 +1,5 @@
 from enum import StrEnum
+from math import sqrt
 from manim import MovingCameraScene, Graph, Text, MovingCamera, Line, DashedLine, Create
 from manim import UP, WHITE, PURPLE, GREEN, YELLOW, RED, GRAY
 from json import dumps
@@ -139,6 +140,20 @@ class Aida:
             scene.play(Create(l))
 
 
+_Task = namedtuple('Task', ['cell_id', 'kind', 'node_a', 'node_b'])
+
+_FRONT_CORNERS = {
+    'front1': {
+        'fwd': (Corner.TopLeft,    Corner.BottomRight),
+        'rev': (Corner.BottomRight, Corner.TopLeft),
+    },
+    'front2': {
+        'fwd': (Corner.TopRight,   Corner.BottomLeft),
+        'rev': (Corner.BottomLeft, Corner.TopRight),
+    },
+}
+
+
 def plan_stitching(
     title: str,
     cols: int,
@@ -147,30 +162,16 @@ def plan_stitching(
     removed: Iterable[tuple[int, int]] | None = None,
 ) -> Aida:
     """
-    Automatically plan a cross stitch path for a layout of cells.
+    Graph-traversal cross stitch planner.
 
-    Rules applied, in priority order:
-      1. Back stitches on the fabric reverse are always horizontal or vertical.
-      2. FrontOne ('\\' diagonal, top-left ↔ bottom-right) is stitched before
-         FrontTwo ('/' diagonal) for every individual cell.
-      3. Thread usage is minimised — segments in the same row chain together
-         with no jumping; adjacent rows connect at a shared corner with no
-         extra stitch at all.
-      4. The starting row is whichever row contains the longest single
-         contiguous segment, giving the thread tail the longest possible
-         runway of consecutive back stitches to be tucked under.
-
-    Strategy — horizontal boustrophedon:
-      For each row, each contiguous horizontal segment is stitched:
-        • FrontOne pass  (left → right): TL→BR per cell, BR→TR back stitch
-          between cells (vertical, up the right side).  Cells share their
-          TR / TL corners, so no extra connector is needed.
-        • Transition on the last cell: BR→TR (positions needle for FrontTwo).
-        • FrontTwo pass  (right → left): TR→BL per cell, BL→TL back stitch
-          between cells (vertical, up the left side).
-      Each run ends at the BottomLeft of its leftmost cell.  That point is
-      identical to the TopLeft of the cell directly below it, so adjacent
-      rows chain with zero waste thread.
+    Rules:
+      1. Stitches alternate strictly Front / Back throughout.
+      2. Back stitches are H or V, distance >= 1 unit; zero-distance back
+         stitches are never emitted.
+      3. FrontOne (\\ diagonal, TL->BR) precedes FrontTwo (/ diagonal,
+         TR->BL) for every individual cell.
+      4. The path starts at one end of the longest straight run so the
+         thread tail is hidden under a long sequence of back stitches.
 
     Args:
         title:   Display title shown above the grid in the animation.
@@ -192,141 +193,178 @@ def plan_stitching(
     if not valid:
         return grid
 
-    # ------------------------------------------------------------------ #
-    # Helpers                                                              #
-    # ------------------------------------------------------------------ #
-
-    def contiguous_segments(xs: list[int]) -> list[list[int]]:
-        """Split a sorted list of x-values into contiguous groups."""
-        xs = sorted(xs)
-        segs, cur = [], [xs[0]]
-        for x in xs[1:]:
-            if x == cur[-1] + 1:
-                cur.append(x)
-            else:
-                segs.append(cur)
-                cur = [x]
-        segs.append(cur)
-        return segs
-
-    def corner_point(sq_id: int, corner: Corner) -> tuple:
-        return grid.squares[sq_id].corners[corner]
-
-    def same_point(sq_a: int, c_a: Corner, sq_b: int, c_b: Corner) -> bool:
-        return corner_point(sq_a, c_a) == corner_point(sq_b, c_b)
-
-    def add_connector(from_sq: int, from_c: Corner, to_sq: int, to_c: Corner):
-        """Add a back-stitch connector, always emitted to preserve front/back alternation."""
-        fa, ta = grid.squares[from_sq], grid.squares[to_sq]
-        hv = (fa.x == ta.x) or (fa.y == ta.y)
-        btype = StitchType.BackOne if hv else StitchType.BackTwo
-        grid.addStitch(Stitch((from_sq, from_c), (to_sq, to_c), btype))
+    active_sq_ids = sorted(cell_to_id[c] for c in valid)
 
     # ------------------------------------------------------------------ #
-    # Organise valid cells into rows                                       #
+    # Node canonicalisation                                                #
+    # Each unique (px, py) corner position gets one integer node_id.      #
     # ------------------------------------------------------------------ #
+    node_map: dict[tuple, int] = {}
+    for sq in grid.squares:
+        for coord in sq.corners.values():
+            key = (coord[0], coord[1])
+            if key not in node_map:
+                node_map[key] = len(node_map)
 
-    row_map: dict[int, list[int]] = {}
-    for x, y in valid:
-        row_map.setdefault(y, []).append(x)
+    node_coords: dict[int, tuple] = {v: k for k, v in node_map.items()}
+
+    # cell_nodes: sq_id -> {Corner -> node_id}
+    cell_nodes: dict[int, dict] = {
+        sq_id: {
+            corner: node_map[(coord[0], coord[1])]
+            for corner, coord in grid.squares[sq_id].corners.items()
+        }
+        for sq_id in range(len(grid.squares))
+    }
+
+    # node_to_sq_corners: node_id -> [(sq_id, Corner)]  (all squares, for back-stitch emission)
+    node_to_sq_corners: dict[int, list] = {}
+    for sq_id, corners in cell_nodes.items():
+        for corner, node_id in corners.items():
+            node_to_sq_corners.setdefault(node_id, []).append((sq_id, corner))
 
     # ------------------------------------------------------------------ #
-    # Runway optimisation                                                  #
-    # The row whose longest contiguous segment is the longest overall is  #
-    # placed first so the thread tail has the maximum number of straight  #
-    # back stitches to hide under at the very start.  All other rows are  #
-    # processed top-to-bottom after the start row.                        #
+    # Tasks  (2 per active cell: front1 and front2)                       #
     # ------------------------------------------------------------------ #
-
-    def longest_seg_len(y: int) -> int:
-        return max(len(s) for s in contiguous_segments(row_map[y]))
-
-    # Tiebreak by highest y (topmost row) so equal-length patterns process
-    # top-to-bottom and adjacent rows chain with no extra connector stitches.
-    best_start_y = max(row_map, key=lambda y: (longest_seg_len(y), y))
-
-    all_rows: list[int] = sorted(row_map.keys(), reverse=True)  # top → bottom
-    if best_start_y != all_rows[0]:
-        all_rows.remove(best_start_y)
-        all_rows.insert(0, best_start_y)
+    all_tasks: list[_Task] = []
+    for sq_id in active_sq_ids:
+        cn = cell_nodes[sq_id]
+        all_tasks.append(_Task(sq_id, 'front1', cn[Corner.TopLeft],  cn[Corner.BottomRight]))
+        all_tasks.append(_Task(sq_id, 'front2', cn[Corner.TopRight], cn[Corner.BottomLeft]))
 
     # ------------------------------------------------------------------ #
-    # Stitch generation                                                    #
+    # Distance helper                                                      #
     # ------------------------------------------------------------------ #
+    def node_dist(a: int, b: int) -> float:
+        ax, ay = node_coords[a]
+        bx, by = node_coords[b]
+        return sqrt((ax - bx) ** 2 + (ay - by) ** 2)
 
-    prev_sq: int | None = None
-    prev_c: Corner | None = None
-    deferred: list[int] = []  # sq_ids whose FrontTwo is deferred to the return pass
+    # ------------------------------------------------------------------ #
+    # Available-task filter and greedy scorer                              #
+    # ------------------------------------------------------------------ #
+    def available_tasks(done: set, front1_done: set) -> list:
+        return [
+            t for t in all_tasks
+            if t not in done
+            and (t.kind == 'front1' or t.cell_id in front1_done)
+        ]
 
-    for y in all_rows:
-        segs = contiguous_segments(row_map[y])
-        for seg in segs:
-            n = len(seg)
-            first_id = cell_to_id[(seg[0], y)]
-            last_id = cell_to_id[(seg[-1], y)]
+    def best_candidate(current: int, avail: list) -> tuple:
+        best_score = None
+        best_task = None
+        best_dir = None
+        for task in avail:
+            for direction in ('fwd', 'rev'):
+                start = task.node_a if direction == 'fwd' else task.node_b
+                d = node_dist(current, start)
+                if d < 1e-9:
+                    continue  # zero-distance back stitch — not allowed
+                is_jump = 1 if d > 1.0 + 1e-9 else 0
+                kind_pref = 0 if task.kind == 'front1' else 1
+                score = (is_jump, d, kind_pref)
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_task = task
+                    best_dir = direction
+        return best_task, best_dir
 
-            # ---- Connect from previous end-point -------------------------
-            # Skip connector when the needle is already at the destination
-            # (adjacent rows: BL of prev leftmost cell == TL of this cell).
-            if prev_sq is not None and not same_point(prev_sq, prev_c, first_id, Corner.TopLeft):
-                add_connector(prev_sq, prev_c, first_id, Corner.TopLeft)
+    # ------------------------------------------------------------------ #
+    # Stitch emission                                                      #
+    # ------------------------------------------------------------------ #
+    def emit_front(task: _Task, direction: str) -> None:
+        fro_c, to_c = _FRONT_CORNERS[task.kind][direction]
+        stype = StitchType.FrontOne if task.kind == 'front1' else StitchType.FrontTwo
+        grid.addStitch(SimpleStitch(task.cell_id, fro_c, to_c, stype))
 
-            # ---- FrontOne pass  (left → right) ---------------------------
-            # TL→BR for every cell; BR→TR back stitch between cells.
-            # TR of cell x  ==  TL of cell x+1, so cells chain automatically.
-            for i, x in enumerate(seg):
-                sq_id = cell_to_id[(x, y)]
-                grid.addStitch(SimpleStitch(sq_id, Corner.TopLeft, Corner.BottomRight))
-                if i < n - 1:
-                    grid.addStitch(SimpleStitch(sq_id, Corner.BottomRight, Corner.TopRight))
+    def emit_back(from_node: int, to_node: int) -> None:
+        d = node_dist(from_node, to_node)
+        btype = StitchType.BackOne if d <= 1.0 + 1e-9 else StitchType.BackTwo
+        from_reps = node_to_sq_corners[from_node]
+        to_reps   = node_to_sq_corners[to_node]
+        shared = {r[0] for r in from_reps} & {r[0] for r in to_reps}
+        if shared:
+            sq_id = next(iter(shared))
+            fro_c = next(r[1] for r in from_reps if r[0] == sq_id)
+            to_c  = next(r[1] for r in to_reps   if r[0] == sq_id)
+            grid.addStitch(SimpleStitch(sq_id, fro_c, to_c, btype))
+        else:
+            from_sq, fro_c = from_reps[0]
+            to_sq,   to_c  = to_reps[0]
+            grid.addStitch(Stitch((from_sq, fro_c), (to_sq, to_c), btype))
 
-            # Transition: BR→TR on the last cell positions the needle at
-            # TopRight, ready for the FrontTwo pass going right → left.
-            # Skipped for n==1: needle stays at BR, we go straight to BR→BL.
-            if n > 1:
-                grid.addStitch(SimpleStitch(last_id, Corner.BottomRight, Corner.TopRight))
+    # ------------------------------------------------------------------ #
+    # Start position: first cell of the longest contiguous straight run   #
+    # ------------------------------------------------------------------ #
+    def find_longest_run() -> list:
+        best: list = []
 
-            # ---- FrontTwo pass  (right → left, leftmost cell deferred) ------
-            # TR→BL per cell; BL→TL back stitch between cells.
-            # The leftmost cell's FrontTwo is skipped here and added to
-            # `deferred` for the return pass.
-            deferred.append(first_id)
-            for i, x in enumerate(reversed(seg)):
-                if i == n - 1:
-                    break  # leftmost cell — defer its FrontTwo
-                sq_id = cell_to_id[(x, y)]
-                grid.addStitch(SimpleStitch(sq_id, Corner.TopRight, Corner.BottomLeft))
-                if i < n - 2:
-                    # inter-cell back stitch: BL→TL chains to TR of cell to the left
-                    grid.addStitch(SimpleStitch(sq_id, Corner.BottomLeft, Corner.TopLeft))
+        row_map: dict[int, list] = {}
+        for x, y in valid:
+            row_map.setdefault(y, []).append(x)
+        for y, xs in row_map.items():
+            xs = sorted(xs)
+            cur = [xs[0]]
+            for x in xs[1:]:
+                if x == cur[-1] + 1:
+                    cur.append(x)
+                else:
+                    if len(cur) > len(best):
+                        best = [(xi, y) for xi in cur]
+                    cur = [x]
+            if len(cur) > len(best):
+                best = [(xi, y) for xi in cur]
 
-            # Needle is now at BR of cell[0]:
-            #   n>1: arrived via partial FrontTwo (BL of cell[1] == BR of cell[0])
-            #   n==1: arrived directly from FrontOne (stayed at BR, no transition)
-            # Horizontal back stitch BR→BL lands at BL of cell[0]
-            # == TL of the next row's leftmost cell (zero-cost join).
-            grid.addStitch(SimpleStitch(first_id, Corner.BottomRight, Corner.BottomLeft))
+        col_map: dict[int, list] = {}
+        for x, y in valid:
+            col_map.setdefault(x, []).append(y)
+        for x, ys in col_map.items():
+            ys = sorted(ys)
+            cur = [ys[0]]
+            for y in ys[1:]:
+                if y == cur[-1] + 1:
+                    cur.append(y)
+                else:
+                    if len(cur) > len(best):
+                        best = [(x, yi) for yi in cur]
+                    cur = [y]
+            if len(cur) > len(best):
+                best = [(x, yi) for yi in cur]
 
-            prev_sq = first_id
-            prev_c = Corner.BottomLeft
+        return best
 
-    # ---- Return pass: complete deferred FrontTwo stitches (bottom → top) ----
-    # `deferred` is in top-to-bottom order; iterate in reverse (bottom → top).
-    # After the forward pass the needle sits at BL of the bottommost deferred
-    # cell, so the first FrontTwo (BL→TR) needs no connector.
-    # Between consecutive deferred cells:
-    #   adjacent rows/same x: TR of lower == BR of upper → horizontal BR→BL
-    #   otherwise: generic connector to BottomLeft of the upper cell
-    prev_def: int | None = None
-    for sq_id in reversed(deferred):
-        if prev_def is not None:
-            if same_point(prev_def, Corner.TopRight, sq_id, Corner.BottomRight):
-                # TR of lower cell == BR of upper cell: one horizontal back stitch
-                grid.addStitch(SimpleStitch(sq_id, Corner.BottomRight, Corner.BottomLeft))
-            else:
-                add_connector(prev_def, Corner.TopRight, sq_id, Corner.BottomLeft)
-        # Needle is at BL of sq_id — complete the deferred FrontTwo as BL→TR.
-        grid.addStitch(SimpleStitch(sq_id, Corner.BottomLeft, Corner.TopRight))
-        prev_def = sq_id
+    longest_run = find_longest_run()
+    start_sq_id = cell_to_id[longest_run[0]]
+    start_task  = next(t for t in all_tasks if t.cell_id == start_sq_id and t.kind == 'front1')
+
+    # ------------------------------------------------------------------ #
+    # Main traversal loop                                                  #
+    # ------------------------------------------------------------------ #
+    def end_node(task: _Task, direction: str) -> int:
+        return task.node_b if direction == 'fwd' else task.node_a
+
+    def start_node(task: _Task, direction: str) -> int:
+        return task.node_a if direction == 'fwd' else task.node_b
+
+    done: set        = set()
+    front1_done: set = set()
+
+    emit_front(start_task, 'fwd')
+    current = end_node(start_task, 'fwd')
+    done.add(start_task)
+    front1_done.add(start_task.cell_id)
+
+    while len(done) < len(all_tasks):
+        avail = available_tasks(done, front1_done)
+        best_task, best_dir = best_candidate(current, avail)
+        if best_task is None:
+            break
+
+        emit_back(current, start_node(best_task, best_dir))
+        emit_front(best_task, best_dir)
+        current = end_node(best_task, best_dir)
+        done.add(best_task)
+        if best_task.kind == 'front1':
+            front1_done.add(best_task.cell_id)
 
     return grid
