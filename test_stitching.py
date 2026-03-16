@@ -215,6 +215,49 @@ class TestEmptyGrid(unittest.TestCase):
         self.assertEqual(grid.stiches, [])
 
 
+class TestStartsAtCorner(unittest.TestCase):
+    """The first stitch should begin at a bounding-box corner, not the interior."""
+
+    def _start_cell(self, grid: Aida) -> tuple[int, int]:
+        sq = grid.squares[grid.stiches[0].squareId]
+        return (sq.x, sq.y)
+
+    def _corners(self, cells: list) -> set[tuple[int, int]]:
+        xs = [c[0] for c in cells]
+        ys = [c[1] for c in cells]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        return {(min_x, min_y), (max_x, min_y), (min_x, max_y), (max_x, max_y)}
+
+    def test_rectangle_starts_at_corner(self):
+        cells = [(x, y) for x in range(3) for y in range(3)]
+        grid  = plan_stitching("3x3", 3, 3, cells)
+        self.assertIn(self._start_cell(grid), self._corners(cells))
+
+    def test_wide_rectangle_starts_at_corner(self):
+        cells = [(x, y) for x in range(4) for y in range(3)]
+        grid  = plan_stitching("4x3", 4, 3, cells)
+        self.assertIn(self._start_cell(grid), self._corners(cells))
+
+    def test_l_shape_starts_at_corner(self):
+        cells = [(x, 1) for x in range(4)] + [(0, 0), (1, 0)]
+        grid  = plan_stitching("L", 4, 2, cells)
+        self.assertIn(self._start_cell(grid), self._corners(cells))
+
+    def test_preferred_corner_is_top_left_or_bottom_right(self):
+        # For a symmetric rectangle both preferred corners are equally valid.
+        cells  = [(x, y) for x in range(3) for y in range(3)]
+        grid   = plan_stitching("3x3", 3, 3, cells)
+        start  = self._start_cell(grid)
+        all_xs = [c[0] for c in cells]
+        all_ys = [c[1] for c in cells]
+        preferred = {
+            (min(all_xs), max(all_ys)),  # top-left
+            (max(all_xs), min(all_ys)),  # bottom-right
+        }
+        self.assertIn(start, preferred)
+
+
 class TestGappedRowJumps(unittest.TestCase):
     """Two smaller jumps are preferred over one large jump across a gap."""
 

@@ -247,46 +247,76 @@ def plan_stitching(
             grid.addStitch(Stitch((from_sq, fro_c), (to_sq, to_c), btype))
 
     # ------------------------------------------------------------------ #
-    # Start position: first cell of the longest contiguous straight run   #
+    # Start position: end of the longest boundary run closest to a corner #
     # ------------------------------------------------------------------ #
-    def find_longest_run() -> list:
-        best: list = []
+    def find_start_run() -> list:
+        all_xs = [c[0] for c in valid]
+        all_ys = [c[1] for c in valid]
+        min_x, max_x = min(all_xs), max(all_xs)
+        min_y, max_y = min(all_ys), max(all_ys)
+
+        # Corners preferred as start points: top-left and bottom-right,
+        # the two ends of the main diagonal of the bounding box.
+        preferred = {(min_x, max_y), (max_x, min_y)}
+        any_corner = {(min_x, min_y), (max_x, min_y), (min_x, max_y), (max_x, max_y)}
+
+        # Collect every maximal contiguous run (H and V).
+        all_runs: list[list] = []
 
         row_map: dict[int, list] = {}
-        for x, y in valid:
+        for x, y in sorted(valid):
             row_map.setdefault(y, []).append(x)
-        for y, xs in row_map.items():
-            xs  = sorted(xs)
+        for y, xs in sorted(row_map.items()):
             cur = [xs[0]]
             for x in xs[1:]:
                 if x == cur[-1] + 1:
                     cur.append(x)
                 else:
-                    if len(cur) > len(best):
-                        best = [(xi, y) for xi in cur]
+                    all_runs.append([(xi, y) for xi in cur])
                     cur = [x]
-            if len(cur) > len(best):
-                best = [(xi, y) for xi in cur]
+            all_runs.append([(xi, y) for xi in cur])
 
         col_map: dict[int, list] = {}
-        for x, y in valid:
+        for x, y in sorted(valid):
             col_map.setdefault(x, []).append(y)
-        for x, ys in col_map.items():
-            ys  = sorted(ys)
+        for x, ys in sorted(col_map.items()):
             cur = [ys[0]]
             for y in ys[1:]:
                 if y == cur[-1] + 1:
                     cur.append(y)
                 else:
-                    if len(cur) > len(best):
-                        best = [(x, yi) for yi in cur]
+                    all_runs.append([(x, yi) for yi in cur])
                     cur = [y]
-            if len(cur) > len(best):
-                best = [(x, yi) for yi in cur]
+            all_runs.append([(x, yi) for yi in cur])
 
-        return best
+        def run_score(run: list) -> tuple:
+            first, last = run[0], run[-1]
+            y0 = first[1]
+            x0 = first[0]
+            is_h    = (y0 == last[1])
+            on_edge = (y0 in (min_y, max_y)) if is_h else (x0 in (min_x, max_x))
+            has_preferred = first in preferred or last in preferred
+            has_corner    = first in any_corner or last in any_corner
+            return (
+                -min(len(run), 4),
+                0 if on_edge       else 1,
+                0 if has_preferred else 1,
+                0 if has_corner    else 1,
+            )
 
-    longest_run = find_longest_run()
+        all_runs.sort(key=run_score)
+        run = all_runs[0]
+
+        # Orient so we start from a preferred corner, then any corner, then keep as-is.
+        first, last = run[0], run[-1]
+        if last in preferred and first not in preferred:
+            run = list(reversed(run))
+        elif last in any_corner and first not in any_corner:
+            run = list(reversed(run))
+
+        return run
+
+    longest_run = find_start_run()
     start_sq_id = cell_to_id[longest_run[0]]
     start_task  = next(t for t in all_tasks if t.cell_id == start_sq_id and t.kind == 'front1')
 
