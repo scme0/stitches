@@ -55,14 +55,14 @@ render_scene() {
     local scene="$1"
     shift
     echo "Rendering $scene..."
-    uv run manim main.py "$scene" "$@"
+    manim main.py "$scene" "$@"
 }
 
 preview_scene() {
     local scene="$1"
     shift
     echo "Previewing $scene (low quality)..."
-    uv run manim main.py "$scene" -ql --preview "$@"
+    manim main.py "$scene" -ql --preview "$@"
 }
 
 render() {
@@ -103,7 +103,7 @@ gif() {
             rm -f media/videos/main/1080p60/*.mp4
             rm -f animations/*.gif
             echo "Rendering all scenes..."
-            uv run manim -qh -a main.py
+            manim -qh -a main.py
         fi
     fi
 
