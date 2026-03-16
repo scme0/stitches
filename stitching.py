@@ -206,8 +206,16 @@ def plan_stitching(
         best_task  = None
         best_dir   = None
         cx, cy = node_coords[current]
+        # End cells are deferred until no non-end tasks remain.
+        has_non_end = any(t.cell_id not in end_sq_ids for t in avail)
         for task in avail:
+            # Skip reserved end-run cells until all other work is done, then
+            # visit them in run order (end_pos) so the back stitches form
+            # a clean sequential chain the thread tail can be tucked under.
+            if has_non_end and task.cell_id in end_sq_ids:
+                continue
             task_y = grid.squares[task.cell_id].y
+            end_pos = end_order_map.get(task.cell_id, 0)
             for direction in ('fwd', 'rev'):
                 start = task.node_a if direction == 'fwd' else task.node_b
                 d = node_dist(current, start)
@@ -218,7 +226,8 @@ def plan_stitching(
                 kind_pref    = 0 if task.kind == 'front1' else 1
                 is_jump      = 1 if d > 1.0 + 1e-9 else 0
                 not_same_row = 0 if task_y == current_y else 1
-                score = (is_diagonal, kind_pref, is_jump, d, not_same_row)
+                score = (is_diagonal, kind_pref, is_jump, d, not_same_row,
+                         end_pos)
                 if best_score is None or score < best_score:
                     best_score = score
                     best_task  = task
@@ -319,6 +328,16 @@ def plan_stitching(
     longest_run = find_start_run()
     start_sq_id = cell_to_id[longest_run[0]]
     start_task  = next(t for t in all_tasks if t.cell_id == start_sq_id and t.kind == 'front1')
+
+    # Reserve the last 3 cells of the run so the sequence finishes with a
+    # clean sequential traversal — the stitcher can tuck the finishing thread
+    # under those consecutive back stitches.  Only applied when the run is
+    # long enough (≥ 4 cells) to leave at least one non-reserved cell before
+    # the end section; shorter runs fall naturally into run order already.
+    end_count     = min(3, len(longest_run) - 1) if len(longest_run) >= 4 else 0
+    end_run       = longest_run[-end_count:] if end_count else []
+    end_sq_ids    = {cell_to_id[c] for c in end_run}
+    end_order_map = {cell_to_id[c]: i for i, c in enumerate(end_run)}
 
     # ------------------------------------------------------------------ #
     # Main traversal loop                                                  #

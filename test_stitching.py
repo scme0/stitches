@@ -276,5 +276,52 @@ class TestGappedRowJumps(unittest.TestCase):
         self.assertEqual(len(jumps), 2, "expected exactly 2 jumps for gapped row")
 
 
+class TestEndRunOrder(unittest.TestCase):
+    """For runs >= 4 cells, the last 3 stitched cells must come from the
+    start run in run order so the finishing thread can be tucked under them."""
+
+    def _last_front_cells(self, grid: Aida, n: int) -> list[tuple[int, int]]:
+        """Return (x, y) of the last n front-stitch cells in emission order."""
+        front_stitches = [
+            s for s in grid.stiches
+            if s.type in (StitchType.FrontOne, StitchType.FrontTwo)
+        ]
+        last_n = front_stitches[-n:]
+        return [(grid.squares[s.squareId].x, grid.squares[s.squareId].y)
+                for s in last_n]
+
+    def test_horizontal_row_5_cells_ends_in_run_order(self):
+        cells = [(x, 0) for x in range(5)]
+        grid  = plan_stitching("5x1", 5, 1, cells)
+        last3_cells = self._last_front_cells(grid, 6)  # 6 front stitches = last 3 cells
+        # The unique cells in last 6 front stitches should be 3 consecutive cells
+        unique = list(dict.fromkeys(c for c in last3_cells))
+        xs = [c[0] for c in unique]
+        # Must be from the run (y=0) and consecutive
+        self.assertEqual(len(unique), 3, "last 3 cells should be 3 distinct cells")
+        self.assertTrue(xs == sorted(xs) or xs == sorted(xs, reverse=True),
+                        f"last 3 cells must be in run order, got {unique}")
+
+    def test_vertical_column_4_cells_ends_in_run_order(self):
+        cells = [(0, y) for y in range(4)]
+        grid  = plan_stitching("1x4", 1, 4, cells)
+        last3_cells = self._last_front_cells(grid, 6)
+        unique = list(dict.fromkeys(c for c in last3_cells))
+        ys = [c[1] for c in unique]
+        self.assertEqual(len(unique), 3)
+        self.assertTrue(ys == sorted(ys) or ys == sorted(ys, reverse=True),
+                        f"last 3 cells must be in run order, got {unique}")
+
+    def test_short_run_no_reservation(self):
+        # A 3-cell row (< 4) should NOT reserve end cells — all tests still pass.
+        cells = [(x, 0) for x in range(3)]
+        grid  = plan_stitching("3x1", 3, 1, cells)
+        types = stitch_types(grid)
+        self.assertTrue(len(types) > 0)
+        for i, t in enumerate(types):
+            expected = "Front" if i % 2 == 0 else "Back"
+            self.assertIn(expected, t)
+
+
 if __name__ == "__main__":
     unittest.main()
