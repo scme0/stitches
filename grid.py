@@ -216,9 +216,7 @@ def plan_stitching(
         return corner_point(sq_a, c_a) == corner_point(sq_b, c_b)
 
     def add_connector(from_sq: int, from_c: Corner, to_sq: int, to_c: Corner):
-        """Add a back-stitch connector only when the two corners differ."""
-        if same_point(from_sq, from_c, to_sq, to_c):
-            return
+        """Add a back-stitch connector, always emitted to preserve front/back alternation."""
         fa, ta = grid.squares[from_sq], grid.squares[to_sq]
         hv = (fa.x == ta.x) or (fa.y == ta.y)
         btype = StitchType.BackOne if hv else StitchType.BackTwo
@@ -258,6 +256,7 @@ def plan_stitching(
 
     prev_sq: int | None = None
     prev_c: Corner | None = None
+    deferred: list[int] = []  # sq_ids whose FrontTwo is deferred to the return pass
 
     for y in all_rows:
         segs = contiguous_segments(row_map[y])
@@ -267,17 +266,10 @@ def plan_stitching(
             last_id = cell_to_id[(seg[-1], y)]
 
             # ---- Connect from previous end-point -------------------------
-            if prev_sq is not None:
-                fsq = grid.squares[prev_sq]
-                # If we're still in the same display row and the exit corner
-                # is BottomLeft (below the row centre), climb back up to
-                # TopLeft first so the gap connector runs horizontally along
-                # the top edge rather than diagonally across the row.
-                if fsq.y == y and prev_c == Corner.BottomLeft:
-                    grid.addStitch(SimpleStitch(prev_sq, Corner.BottomLeft, Corner.TopLeft))
-                    add_connector(prev_sq, Corner.TopLeft, first_id, Corner.TopLeft)
-                else:
-                    add_connector(prev_sq, prev_c, first_id, Corner.TopLeft)
+            # Skip connector when the needle is already at the destination
+            # (adjacent rows: BL of prev leftmost cell == TL of this cell).
+            if prev_sq is not None and not same_point(prev_sq, prev_c, first_id, Corner.TopLeft):
+                add_connector(prev_sq, prev_c, first_id, Corner.TopLeft)
 
             # ---- FrontOne pass  (left → right) ---------------------------
             # TL→BR for every cell; BR→TR back stitch between cells.
@@ -290,21 +282,51 @@ def plan_stitching(
 
             # Transition: BR→TR on the last cell positions the needle at
             # TopRight, ready for the FrontTwo pass going right → left.
-            grid.addStitch(SimpleStitch(last_id, Corner.BottomRight, Corner.TopRight))
+            # Skipped for n==1: needle stays at BR, we go straight to BR→BL.
+            if n > 1:
+                grid.addStitch(SimpleStitch(last_id, Corner.BottomRight, Corner.TopRight))
 
-            # ---- FrontTwo pass  (right → left) ---------------------------
-            # TR→BL for every cell; BL→TL back stitch between cells.
-            # TL of cell x  ==  TR of cell x-1, so cells chain automatically.
+            # ---- FrontTwo pass  (right → left, leftmost cell deferred) ------
+            # TR→BL per cell; BL→TL back stitch between cells.
+            # The leftmost cell's FrontTwo is skipped here and added to
+            # `deferred` for the return pass.
+            deferred.append(first_id)
             for i, x in enumerate(reversed(seg)):
+                if i == n - 1:
+                    break  # leftmost cell — defer its FrontTwo
                 sq_id = cell_to_id[(x, y)]
                 grid.addStitch(SimpleStitch(sq_id, Corner.TopRight, Corner.BottomLeft))
-                if i < n - 1:
+                if i < n - 2:
+                    # inter-cell back stitch: BL→TL chains to TR of cell to the left
                     grid.addStitch(SimpleStitch(sq_id, Corner.BottomLeft, Corner.TopLeft))
 
-            # End position: BottomLeft of the leftmost cell.
-            # BL of (x, y)  ==  TL of (x, y-1), so the next row begins
-            # at exactly this point with no connector stitch needed.
+            # Needle is now at BR of cell[0]:
+            #   n>1: arrived via partial FrontTwo (BL of cell[1] == BR of cell[0])
+            #   n==1: arrived directly from FrontOne (stayed at BR, no transition)
+            # Horizontal back stitch BR→BL lands at BL of cell[0]
+            # == TL of the next row's leftmost cell (zero-cost join).
+            grid.addStitch(SimpleStitch(first_id, Corner.BottomRight, Corner.BottomLeft))
+
             prev_sq = first_id
             prev_c = Corner.BottomLeft
+
+    # ---- Return pass: complete deferred FrontTwo stitches (bottom → top) ----
+    # `deferred` is in top-to-bottom order; iterate in reverse (bottom → top).
+    # After the forward pass the needle sits at BL of the bottommost deferred
+    # cell, so the first FrontTwo (BL→TR) needs no connector.
+    # Between consecutive deferred cells:
+    #   adjacent rows/same x: TR of lower == BR of upper → horizontal BR→BL
+    #   otherwise: generic connector to BottomLeft of the upper cell
+    prev_def: int | None = None
+    for sq_id in reversed(deferred):
+        if prev_def is not None:
+            if same_point(prev_def, Corner.TopRight, sq_id, Corner.BottomRight):
+                # TR of lower cell == BR of upper cell: one horizontal back stitch
+                grid.addStitch(SimpleStitch(sq_id, Corner.BottomRight, Corner.BottomLeft))
+            else:
+                add_connector(prev_def, Corner.TopRight, sq_id, Corner.BottomLeft)
+        # Needle is at BL of sq_id — complete the deferred FrontTwo as BL→TR.
+        grid.addStitch(SimpleStitch(sq_id, Corner.BottomLeft, Corner.TopRight))
+        prev_def = sq_id
 
     return grid
