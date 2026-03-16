@@ -1,5 +1,5 @@
 from manim import MovingCameraScene, Graph, Text, MovingCamera, Line, DashedLine, Create
-from manim import UP, WHITE, PURPLE, GREEN, YELLOW, RED, GRAY
+from manim import UP, WHITE, PURPLE, GREEN, YELLOW, RED, BLUE, GRAY
 
 from stitching import (  # noqa: F401  (re-export for backward compatibility)
     stringify, StitchType, Corner, StitchPoint,
@@ -68,6 +68,8 @@ def _draw(self, scene: MovingCameraScene):
                 l = DashedLine(fromPoint, toPoint, dash_length=.2, color=YELLOW)
             case StitchType.BackTwo:
                 l = DashedLine(fromPoint, toPoint, dash_length=.05, color=RED)
+            case StitchType.BackThree:
+                l = DashedLine(fromPoint, toPoint, dash_length=.1, color=BLUE)
 
         scene.play(Create(l))
 

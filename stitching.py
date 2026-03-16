@@ -14,6 +14,7 @@ class StitchType(StrEnum):
     FrontTwo  = "Front2"
     BackOne   = "Back1"
     BackTwo   = "Back2"
+    BackThree = "Back3"
     Automatic = "Automatic"
 
 
@@ -239,9 +240,38 @@ def plan_stitching(
         stype = StitchType.FrontOne if task.kind == 'front1' else StitchType.FrontTwo
         grid.addStitch(SimpleStitch(task.cell_id, fro_c, to_c, stype))
 
+    # Track usage per unit segment (rounded to integer half-coords to avoid
+    # floating-point key drift).  A long back stitch covering multiple unit
+    # segments correctly overlaps with shorter stitches on any sub-segment.
+    _segment_usage: dict[tuple, int] = {}
+
+    def _unit_segments(from_node: int, to_node: int) -> list[tuple]:
+        """Decompose a H/V back stitch into canonical unit-length segment keys."""
+        fx, fy = node_coords[from_node]
+        tx, ty = node_coords[to_node]
+        segs: list[tuple] = []
+        if abs(fy - ty) < 1e-9:          # horizontal
+            x_lo, x_hi = min(fx, tx), max(fx, tx)
+            x = x_lo
+            while x < x_hi - 1e-9:
+                segs.append(('h', round(fy * 2), round(x * 2)))
+                x += 1.0
+        else:                             # vertical
+            y_lo, y_hi = min(fy, ty), max(fy, ty)
+            y = y_lo
+            while y < y_hi - 1e-9:
+                segs.append(('v', round(fx * 2), round(y * 2)))
+                y += 1.0
+        return segs
+
     def emit_back(from_node: int, to_node: int) -> None:
-        d     = node_dist(from_node, to_node)
-        btype = StitchType.BackOne if d <= 1.0 + 1e-9 else StitchType.BackTwo
+        segs  = _unit_segments(from_node, to_node)
+        count = max((_segment_usage.get(s, 0) for s in segs), default=0)
+        for s in segs:
+            _segment_usage[s] = _segment_usage.get(s, 0) + 1
+        btype = (StitchType.BackOne   if count == 0 else
+                 StitchType.BackTwo   if count == 1 else
+                 StitchType.BackThree)
         from_reps = node_to_sq_corners[from_node]
         to_reps   = node_to_sq_corners[to_node]
         shared    = {r[0] for r in from_reps} & {r[0] for r in to_reps}

@@ -25,7 +25,7 @@ def back_stitch_coords(grid: Aida) -> list[tuple]:
     """Return (from_x, from_y, to_x, to_y) for every back stitch."""
     result = []
     for s in grid.stiches:
-        if s.type not in (StitchType.BackOne, StitchType.BackTwo):
+        if s.type not in (StitchType.BackOne, StitchType.BackTwo, StitchType.BackThree):
             continue
         if isinstance(s, SimpleStitch):
             sq = grid.squares[s.squareId]
@@ -272,8 +272,77 @@ class TestGappedRowJumps(unittest.TestCase):
     def test_jump_count(self):
         cells  = [(0, 0), (1, 0), (3, 0), (4, 0)]
         grid   = plan_stitching("gapped", 5, 1, cells)
-        jumps  = [s for s in grid.stiches if s.type == StitchType.BackTwo]
+        jumps  = [(fx, fy, tx, ty) for fx, fy, tx, ty in back_stitch_coords(grid)
+                  if sqrt((fx - tx) ** 2 + (fy - ty) ** 2) > 1.0 + 1e-9]
         self.assertEqual(len(jumps), 2, "expected exactly 2 jumps for gapped row")
+
+
+class TestBackStitchSegmentStyles(unittest.TestCase):
+    """No two back stitches that share any unit segment may have the same style,
+    even when one stitch is a long jump that passes over a shorter stitch."""
+
+    _BACK_TYPES = (StitchType.BackOne, StitchType.BackTwo, StitchType.BackThree)
+
+    def _back_entries(self, grid: Aida) -> list[tuple]:
+        """Return (fx, fy, tx, ty, type) for every back stitch."""
+        result = []
+        for s in grid.stiches:
+            if s.type not in self._BACK_TYPES:
+                continue
+            if isinstance(s, SimpleStitch):
+                sq = grid.squares[s.squareId]
+                fx, fy, _ = sq.corners[s.fro]
+                tx, ty, _ = sq.corners[s.to]
+            else:
+                fx, fy, _ = grid.squares[s.fro[0]].corners[s.fro[1]]
+                tx, ty, _ = grid.squares[s.to[0]].corners[s.to[1]]
+            result.append((fx, fy, tx, ty, s.type))
+        return result
+
+    @staticmethod
+    def _segments(fx, fy, tx, ty) -> set[tuple]:
+        segs: set[tuple] = set()
+        if abs(fy - ty) < 1e-9:
+            x_lo, x_hi = min(fx, tx), max(fx, tx)
+            x = x_lo
+            while x < x_hi - 1e-9:
+                segs.add(('h', round(fy * 2), round(x * 2)))
+                x += 1.0
+        else:
+            y_lo, y_hi = min(fy, ty), max(fy, ty)
+            y = y_lo
+            while y < y_hi - 1e-9:
+                segs.add(('v', round(fx * 2), round(y * 2)))
+                y += 1.0
+        return segs
+
+    def _check(self, grid: Aida, label: str):
+        backs = self._back_entries(grid)
+        for i in range(len(backs)):
+            for j in range(i + 1, len(backs)):
+                a, b = backs[i], backs[j]
+                if a[4] == b[4] and self._segments(*a[:4]) & self._segments(*b[:4]):
+                    self.fail(
+                        f"{label}: back stitches share a segment with the same style "
+                        f"{a[4]}: {a[:4]} and {b[:4]}"
+                    )
+
+    def test_rectangle(self):
+        cells = [(x, y) for x in range(3) for y in range(3)]
+        self._check(plan_stitching("3x3", 3, 3, cells), "3x3")
+
+    def test_horizontal_row(self):
+        self._check(plan_stitching("5x1", 5, 1, [(x, 0) for x in range(5)]), "5x1")
+
+    def test_gapped_row(self):
+        cells = [(0, 0), (1, 0), (3, 0), (4, 0)]
+        self._check(plan_stitching("gapped", 5, 1, cells), "gapped")
+
+    def test_staircase(self):
+        cells = ([(x, 2) for x in range(3)] +
+                 [(x, 1) for x in range(1, 4)] +
+                 [(x, 0) for x in range(2, 5)])
+        self._check(plan_stitching("staircase", 5, 3, cells), "staircase")
 
 
 class TestEndRunOrder(unittest.TestCase):
