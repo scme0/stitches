@@ -250,22 +250,24 @@ def plan_stitching(
             and (t.kind == 'front1' or t.cell_id in front1_done)
         ]
 
-    def best_candidate(current: int, avail: list) -> tuple:
+    def best_candidate(current: int, avail: list, current_y: int) -> tuple:
         best_score = None
         best_task = None
         best_dir = None
         cx, cy = node_coords[current]
         for task in avail:
+            task_y = grid.squares[task.cell_id].y
             for direction in ('fwd', 'rev'):
                 start = task.node_a if direction == 'fwd' else task.node_b
                 d = node_dist(current, start)
                 if d < 1e-9:
                     continue  # zero-distance back stitch — not allowed
                 sx, sy = node_coords[start]
-                is_diagonal = 0 if (sx == cx or sy == cy) else 1
-                is_jump = 1 if d > 1.0 + 1e-9 else 0
-                kind_pref = 0 if task.kind == 'front1' else 1
-                score = (is_diagonal, kind_pref, is_jump, d)
+                is_diagonal  = 0 if (sx == cx or sy == cy) else 1
+                not_same_row = 0 if task_y == current_y else 1
+                is_jump      = 1 if d > 1.0 + 1e-9 else 0
+                kind_pref    = 0 if task.kind == 'front1' else 1
+                score = (is_diagonal, not_same_row, kind_pref, is_jump, d)
                 if best_score is None or score < best_score:
                     best_score = score
                     best_task = task
@@ -353,19 +355,21 @@ def plan_stitching(
     front1_done: set = set()
 
     emit_front(start_task, 'fwd')
-    current = end_node(start_task, 'fwd')
+    current   = end_node(start_task, 'fwd')
+    current_y = grid.squares[start_task.cell_id].y
     done.add(start_task)
     front1_done.add(start_task.cell_id)
 
     while len(done) < len(all_tasks):
         avail = available_tasks(done, front1_done)
-        best_task, best_dir = best_candidate(current, avail)
+        best_task, best_dir = best_candidate(current, avail, current_y)
         if best_task is None:
             break
 
         emit_back(current, start_node(best_task, best_dir))
         emit_front(best_task, best_dir)
-        current = end_node(best_task, best_dir)
+        current   = end_node(best_task, best_dir)
+        current_y = grid.squares[best_task.cell_id].y
         done.add(best_task)
         if best_task.kind == 'front1':
             front1_done.add(best_task.cell_id)
