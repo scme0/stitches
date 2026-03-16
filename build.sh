@@ -14,7 +14,7 @@ manim -qh -a main.py
 # regenerate gifs
 for file in media/videos/main/1080p60/*.mp4; do
     name=${$(basename ${file})%.*}
-    ffmpeg -i "$file" -f yuv4mpegpipe - | gifski -W 600 -o "animations/$name.gif" -
+    gifski -W 600 -o "animations/$name.gif" "$file"
 done
 
 if [[ $* == --push ]]; then
