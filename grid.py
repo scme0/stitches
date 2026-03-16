@@ -254,15 +254,18 @@ def plan_stitching(
         best_score = None
         best_task = None
         best_dir = None
+        cx, cy = node_coords[current]
         for task in avail:
             for direction in ('fwd', 'rev'):
                 start = task.node_a if direction == 'fwd' else task.node_b
                 d = node_dist(current, start)
                 if d < 1e-9:
                     continue  # zero-distance back stitch — not allowed
+                sx, sy = node_coords[start]
+                is_diagonal = 0 if (sx == cx or sy == cy) else 1
                 is_jump = 1 if d > 1.0 + 1e-9 else 0
                 kind_pref = 0 if task.kind == 'front1' else 1
-                score = (is_jump, d, kind_pref)
+                score = (is_diagonal, kind_pref, is_jump, d)
                 if best_score is None or score < best_score:
                     best_score = score
                     best_task = task
