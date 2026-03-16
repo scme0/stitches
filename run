@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+usage() {
+    cat <<EOF
+Usage: ./run <command> [options]
+
+Commands:
+  test              Run the unit test suite
+  render [Scene]    Render a scene to video, or all scenes if none specified
+  preview <Scene>   Render and preview a scene in low quality
+  gif [Scene] [--no-render] [--commit] [--push]
+                    Render and convert to gifs (all scenes, or just one).
+                    --no-render  Skip rendering, convert existing mp4s only
+                    --commit     Commit the resulting gifs to git
+                    --push       Commit and push (implies --commit, pulls first)
+  scenes            List all available scene names
+  help              Show this message
+
+Options for render/preview:
+  Any extra args are forwarded to manim (e.g. --resolution 1920,1080)
+
+Examples:
+  ./run test
+  ./run render PlannedRectangle
+  ./run preview PlannedGappedRow
+  ./run gif
+  ./run gif PlannedRectangle --no-render
+  ./run gif --push
+EOF
+}
+
+run_tests() {
+    echo "Running tests..."
+    python3 -m unittest test_stitching -v
+}
+
+list_scenes() {
+    echo "Available scenes:"
+    grep -n "^class " main.py | sed 's/class \(.*\)(.*:.*/  \1/'
+}
+
+PLANNED_SCENES=(
+    PlannedHorizontal
+    PlannedVertical
+    PlannedRectangle
+    PlannedLShape
+    PlannedGappedRow
+    PlannedStaircase
+)
+
+render_scene() {
+    local scene="$1"
+    shift
+    echo "Rendering $scene..."
+    uv run manim main.py "$scene" "$@"
+}
+
+preview_scene() {
+    local scene="$1"
+    shift
+    echo "Previewing $scene (low quality)..."
+    uv run manim main.py "$scene" -ql --preview "$@"
+}
+
+render() {
+    if [[ $# -gt 0 && "$1" != --* ]]; then
+        render_scene "$@"
+    else
+        for scene in "${PLANNED_SCENES[@]}"; do
+            render_scene "$scene" "$@"
+        done
+        echo "Done. All planned scenes rendered."
+    fi
+}
+
+gif() {
+    local do_render=1
+    local do_commit=0
+    local do_push=0
+    local scene=""
+    for arg in "$@"; do
+        case "$arg" in
+            --no-render) do_render=0 ;;
+            --commit)    do_commit=1 ;;
+            --push)      do_push=1; do_commit=1 ;;
+            --*)         echo "Unknown gif option: $arg" >&2; exit 1 ;;
+            *)           scene="$arg" ;;
+        esac
+    done
+
+    if [[ $do_push -eq 1 ]]; then
+        echo "Pulling latest..."
+        git pull
+    fi
+
+    if [[ $do_render -eq 1 ]]; then
+        if [[ -n "$scene" ]]; then
+            rm -f "media/videos/main/1080p60/$scene.mp4"
+            render_scene "$scene" -qh
+        else
+            echo "Cleaning up old renders..."
+            rm -f media/videos/main/1080p60/*.mp4
+            rm -f animations/*.gif
+            echo "Rendering all scenes..."
+            uv run manim -qh -a main.py
+        fi
+    fi
+
+    echo "Converting mp4s to gifs..."
+    local count=0
+    if [[ -n "$scene" ]]; then
+        local file="media/videos/main/1080p60/$scene.mp4"
+        [[ -f "$file" ]] || { echo "No mp4 found for scene '$scene' at $file"; exit 1; }
+        gifski -W 600 -o "animations/$scene.gif" "$file"
+        echo "  $scene.gif"
+        count=1
+    else
+        for file in media/videos/main/1080p60/*.mp4; do
+            [[ -f "$file" ]] || { echo "No mp4s found in media/videos/main/1080p60/"; exit 1; }
+            local name
+            name="$(basename "$file" .mp4)"
+            gifski -W 600 -o "animations/$name.gif" "$file"
+            echo "  $name.gif"
+            (( count++ )) || true
+        done
+    fi
+    echo "Done. $count gif(s) written to animations/."
+
+    if [[ $do_commit -eq 1 ]]; then
+        git lfs track "animations/*.gif"
+        git add .gitattributes animations/
+        git commit -m "update animation gifs"
+        echo "Committed."
+    fi
+
+    if [[ $do_push -eq 1 ]]; then
+        git push
+        echo "Pushed."
+    fi
+}
+
+CMD="${1:-help}"
+shift || true
+
+case "$CMD" in
+    test)            run_tests ;;
+    render)          render "$@" ;;
+    preview)         preview_scene "$@" ;;
+    gif)             gif "$@" ;;
+    scenes)          list_scenes ;;
+    help|--help|-h)  usage ;;
+    *)
+        echo "Unknown command: $CMD" >&2
+        usage >&2
+        exit 1
+        ;;
+esac
